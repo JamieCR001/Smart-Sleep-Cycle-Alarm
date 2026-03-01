@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Sleep Cycle Alarm</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --ink: #1e293b;
+        --muted: #64748b;
+        --primary: #6366f1;
+        --danger: #e11d48;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 15% 10%, #e0e7ff 0%, transparent 35%),
+                    radial-gradient(circle at 85% 90%, #dcfce7 0%, transparent 35%), var(--bg);
+      }
+      .wrap { max-width: 600px; margin: 40px auto; padding: 20px; }
+      .card { background: var(--panel); border-radius: 14px; padding: 24px; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12); }
+      h1 { margin: 0 0 8px; font-size: 1.8rem; text-align: center;}
+      p.subtitle { text-align: center; color: var(--muted); margin-bottom: 24px; font-size: 0.95rem; }
+      
+      .time-grid { display: grid; gap: 20px; grid-template-columns: 1fr 1fr; margin-bottom: 20px; }
+      .input-group { display: flex; flex-direction: column; }
+      label { font-weight: 600; margin-bottom: 8px; font-size: 0.9rem; color: var(--ink); }
+      
+      input[type="time"] {
+        padding: 12px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      input[type="time"]:focus { border-color: var(--primary); }
+
+      .duration-info {
+        background: #f8fafc;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 20px;
+        border: 1px dashed #cbd5e1;
+      }
+      .duration-info span { font-weight: 700; color: var(--primary); }
+      
+      button {
+        width: 100%; border: 0; border-radius: 10px; padding: 14px;
+        font-size: 1rem; font-weight: 700; color: #ffffff;
+        background: var(--primary); cursor: pointer;
+        transition: transform 0.1s, background 0.2s;
+      }
+      button:hover { background: #4f46e5; }
+      button:active { transform: scale(0.98); }
+      button:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+      #alarmContainer {
+        display: none;
+        margin-top: 24px;
+        padding: 20px;
+        border: 2px solid var(--danger);
+        background: #fff1f2;
+        border-radius: 12px;
+        text-align: center;
+      }
+      #stopBtn { background: var(--danger); margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="card">
+        <h1>Sleep Window</h1>
+        <p class="subtitle">Set your earliest and latest wake-up times.</p>
+        
+        <div class="time-grid">
+          <div class="input-group">
+            <label for="wakeStart">Earliest Wake</label>
+            <input type="time" id="wakeStart" required>
+          </div>
+          <div class="input-group">
+            <label for="wakeEnd">Latest Wake</label>
+            <input type="time" id="wakeEnd" required>
+          </div>
+        </div>
+
+        <div class="duration-info" id="durationDisplay">
+          Enter times to see total sleep duration.
+        </div>
+
+        <button type="button" id="startBtn">Set Alarm</button>
+
+        <div id="alarmContainer">
+            <h2 style="color: var(--danger); margin-top:0;">Good Morning!</h2>
+            <button id="stopBtn">STOP ALARM</button>
+            <audio id="alarmAudio" loop>
+                <source src="/static/alarm.mp3" type="audio/mpeg">
+            </audio>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const wakeStartInput = document.getElementById("wakeStart");
+      const wakeEndInput = document.getElementById("wakeEnd");
+      const durationDisplay = document.getElementById("durationDisplay");
+      const startBtn = document.getElementById("startBtn");
+      
+      const alarmContainer = document.getElementById('alarmContainer');
+      const alarmAudio = document.getElementById('alarmAudio');
+      const stopBtn = document.getElementById('stopBtn');
+      
+      let statusInterval;
+      let minMinutes = 0;
+      let maxMinutes = 0;
+
+      function calculateDurations() {
+        if (!wakeStartInput.value || !wakeEndInput.value) return;
+
+        const now = new Date();
+        
+        function getMinutesUntil(timeStr) {
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          const target = new Date();
+          target.setHours(hours, minutes, 0, 0);
+          
+          // If the time is earlier than 'now', assume it's for tomorrow
+          if (target <= now) {
+            target.setDate(target.getDate() + 1);
+          }
+          
+          return Math.floor((target - now) / 60000);
+        }
+
+        minMinutes = getMinutesUntil(wakeStartInput.value);
+        maxMinutes = getMinutesUntil(wakeEndInput.value);
+
+        // Validation: End must be after Start
+        if (maxMinutes < minMinutes) {
+            durationDisplay.innerHTML = `<span style="color:red">Latest wake must be after earliest wake!</span>`;
+            startBtn.disabled = true;
+            return;
+        }
+
+        startBtn.disabled = false;
+        const hours = (minMinutes / 60).toFixed(1);
+        const maxHours = (maxMinutes / 60).toFixed(1);
+        durationDisplay.innerHTML = `Sleep Duration: <span>${hours}h</span> to <span>${maxHours}h</span>`;
+      }
+
+      wakeStartInput.addEventListener("input", calculateDurations);
+      wakeEndInput.addEventListener("input", calculateDurations);
+
+      startBtn.addEventListener("click", async () => {
+        const payload = {
+          min_nap: minMinutes,
+          max_nap: maxMinutes,
+          strict_mode: true 
+        };
+
+        try {
+          const response = await fetch("/start_nap", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          
+          if (response.ok) {
+            startBtn.disabled = true;
+            startBtn.textContent = "Monitoring Sleep Cycles...";
+            statusInterval = setInterval(checkNapStatus, 1000);
+          }
+        } catch (error) {
+          alert("Error connecting to server.");
+        }
+      });
+
+      async function checkNapStatus() {
+        try {
+          const response = await fetch("/check_status");
+          const data = await response.json();
+          if (data.status === "wake_up") triggerAlarm();
+        } catch (e) { console.error(e); }
+      }
+
+      function triggerAlarm() {
+        clearInterval(statusInterval);
+        alarmContainer.style.display = 'block';
+        alarmAudio.play();
+      }
+
+      stopBtn.addEventListener("click", async () => {
+        await fetch("/stop_alarm", { method: "POST" });
+        alarmAudio.pause();
+        alarmAudio.currentTime = 0;
+        alarmContainer.style.display = 'none';
+        startBtn.disabled = false;
+        startBtn.textContent = "Set Alarm";
+      });
+    </script>
+  </body>
+</html>
